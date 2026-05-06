@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Runs | XGBoost7 Dashboard{% endblock %}
+
+{% block content %}
+  <section class="hero-panel compact">
+    <div>
+      <p class="eyebrow">Compare Runs</p>
+      <h1>Left versus right</h1>
+      <p class="hero-copy">Choose any two completed outputs and compare metrics, features, and event behavior side by side.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <form class="selector-form" method="get" action="{{ url_for('compare_runs') }}">
+      <label>
+        Left run
+        <select name="left">
+          {% for run in run_listing.runs %}
+            <option value="{{ run.run_id }}" {% if run.run_id == left_run_id %}selected{% endif %}>{{ run.run_id }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Right run
+        <select name="right">
+          {% for run in run_listing.runs %}
+            <option value="{{ run.run_id }}" {% if run.run_id == right_run_id %}selected{% endif %}>{{ run.run_id }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Update comparison</button>
+    </form>
+  </section>
+
+  {% if compare_payload %}
+    <section class="compare-grid">
+      <article class="panel compare-panel">
+        <p class="eyebrow">Left</p>
+        <h2>{{ compare_payload.left.run_id }}</h2>
+        <div class="compare-metrics">
+          <div>
+            <span class="stat-label">Val P@0.5%</span>
+            <strong>{{ compare_payload.left.summary.val_precision_at_0_5 | percent }}</strong>
+          </div>
+          <div>
+            <span class="stat-label">Test P@0.5%</span>
+            <strong>{{ compare_payload.left.summary.test_precision_at_0_5 | percent }}</strong>
+          </div>
+        </div>
+        <a class="secondary-link" href="{{ url_for('run_detail', run_id=compare_payload.left.run_id) }}">Open left details</a>
+      </article>
+      <article class="panel compare-panel accent">
+        <p class="eyebrow">Right</p>
+        <h2>{{ compare_payload.right.run_id }}</h2>
+        <div class="compare-metrics">
+          <div>
+            <span class="stat-label">Val P@0.5%</span>
+            <strong>{{ compare_payload.right.summary.val_precision_at_0_5 | percent }}</strong>
+          </div>
+          <div>
+            <span class="stat-label">Test P@0.5%</span>
+            <strong>{{ compare_payload.right.summary.test_precision_at_0_5 | percent }}</strong>
+          </div>
+        </div>
+        <a class="secondary-link" href="{{ url_for('run_detail', run_id=compare_payload.right.run_id) }}">Open right details</a>
+      </article>
+    </section>
+
+    <section class="two-column">
+      <article class="panel">
+        <div class="panel-header">
+          <h2>Precision comparison</h2>
+          <p>Validation and test precision curves for both runs.</p>
+        </div>
+        <div class="chart-frame">
+          <canvas id="compare-precision-chart"></canvas>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="panel-header">
+          <h2>Feature importance comparison</h2>
+          <p>Union of the top features from both runs.</p>
+        </div>
+        <div class="chart-frame">
+          <canvas id="compare-feature-chart"></canvas>
+        </div>
+      </article>
+    </section>
+
+    <section class="three-column">
+      {% for fold_name, event_chart in compare_payload.event_comparison.items() %}
+        <article class="panel">
+          <div class="panel-header">
+            <h2>{{ fold_name|capitalize }} event comparison</h2>
+          </div>
+          <div class="chart-frame chart-frame--compact">
+            <canvas id="compare-event-chart-{{ fold_name }}"></canvas>
+          </div>
+        </article>
+      {% endfor %}
+    </section>
+
+    <script>
+      window.addEventListener('DOMContentLoaded', function () {
+        window.dashboardCharts.renderComparePrecisionChart(
+          'compare-precision-chart',
+          {{ compare_payload.left.precision_chart | tojson }},
+          {{ compare_payload.right.precision_chart | tojson }},
+          '{{ compare_payload.left.run_id }}',
+          '{{ compare_payload.right.run_id }}'
+        );
+        window.dashboardCharts.renderCompareFeatureChart(
+          'compare-feature-chart',
+          {{ compare_payload.feature_importance | tojson }},
+          '{{ compare_payload.left.run_id }}',
+          '{{ compare_payload.right.run_id }}'
+        );
+        {% for fold_name, event_chart in compare_payload.event_comparison.items() %}
+          window.dashboardCharts.renderCompareEventChart(
+            'compare-event-chart-{{ fold_name }}',
+            {{ event_chart | tojson }},
+            '{{ compare_payload.left.run_id }}',
+            '{{ compare_payload.right.run_id }}',
+            '{{ fold_name|capitalize }} events'
+          );
+        {% endfor %}
+      });
+    </script>
+  {% else %}
+    <section class="panel empty-state">
+      <h2>No runs available to compare</h2>
+      <p>The compare view becomes available once the dashboard can find at least one valid run.</p>
+    </section>
+  {% endif %}
+{% endblock %}

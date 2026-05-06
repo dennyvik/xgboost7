@@ -59,6 +59,33 @@ outputs/debug/df_feat_sample.csv
 outputs/debug/df_labeled_sample.csv
 ```
 
+## Run Dashboard
+
+After training has produced run folders under `outputs/runs`, start the local dashboard:
+
+```bash
+source venv311/bin/activate
+python scripts/run_dashboard.py
+```
+
+Open `http://127.0.0.1:5000` in a browser.
+
+The dashboard is read-only and loads its data directly from the existing run artifacts:
+
+```text
+outputs/runs/<run_id>/
+    config.yaml
+    logs.txt
+    metrics.json
+    feature_importance.csv
+```
+
+Available views:
+
+- Run list with summary metrics for all valid outputs
+- Per-run detail page with precision, feature importance, event charts, config highlights, and log preview
+- Dedicated compare page with left and right run selectors for side-by-side evaluation
+
 ## Tests
 
 ```bash

@@ -21,11 +21,11 @@ sampling:
   random_state: 42
 
 label:
-  horizon_bars: 5
-  threshold: 0.002
+  horizon_bars: 10
+  threshold: 0.0015
 
 model:
-  max_depth: 4
+  max_depth: 5
   learning_rate: 0.05
   n_estimators: 200
   scale_pos_weight: 8

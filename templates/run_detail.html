@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}{{ detail.run_id }} | XGBoost7 Dashboard{% endblock %}
+
+{% block content %}
+  <section class="hero-panel compact">
+    <div>
+      <p class="eyebrow">Run Detail</p>
+      <h1>{{ detail.run_id }}</h1>
+      <p class="hero-copy">Timestamp {{ detail.timestamp }}. Detail views are built from metrics.json, config.yaml, feature_importance.csv, and logs.txt.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="button-link" href="{{ url_for('compare_runs', left=detail.run_id) }}">Compare this run</a>
+    </div>
+  </section>
+
+  <section class="card-grid three-up">
+    <article class="panel stat-card-large">
+      <span class="stat-label">Validation P@0.5%</span>
+      <strong>{{ detail.summary.val_precision_at_0_5 | percent }}</strong>
+      <p>{{ detail.summary.val_rows }} validation rows</p>
+    </article>
+    <article class="panel stat-card-large">
+      <span class="stat-label">Test P@0.5%</span>
+      <strong>{{ detail.summary.test_precision_at_0_5 | percent }}</strong>
+      <p>{{ detail.summary.test_rows }} test rows</p>
+    </article>
+    <article class="panel stat-card-large">
+      <span class="stat-label">Feature count</span>
+      <strong>{{ detail.summary.feature_count }}</strong>
+      <p>Top feature: {{ detail.summary.top_feature.feature or '-' }}</p>
+    </article>
+  </section>
+
+  <section class="two-column">
+    <article class="panel">
+      <div class="panel-header">
+        <h2>Precision at K</h2>
+        <p>Train, validation, and test precision across the saved top-k cutoffs.</p>
+      </div>
+      <div class="chart-frame">
+        <canvas id="precision-chart"></canvas>
+      </div>
+    </article>
+    <article class="panel">
+      <div class="panel-header">
+        <h2>Feature importance</h2>
+        <p>Top ranked features from feature_importance.csv.</p>
+      </div>
+      <div class="chart-frame">
+        <canvas id="feature-chart"></canvas>
+      </div>
+    </article>
+  </section>
+
+  <section class="three-column">
+    {% for fold_name, event_chart in detail.event_charts.items() %}
+      <article class="panel">
+        <div class="panel-header">
+          <h2>{{ fold_name|capitalize }} events</h2>
+          <p>Event rate versus precision at 0.5%.</p>
+        </div>
+        <div class="chart-frame chart-frame--compact">
+          <canvas id="event-chart-{{ fold_name }}"></canvas>
+        </div>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="two-column">
+    <article class="panel">
+      <div class="panel-header">
+        <h2>Config highlights</h2>
+      </div>
+      <div class="kv-grid">
+        {% for section_name, section_values in detail.config.items() %}
+          {% if section_values is mapping %}
+            {% for key, value in section_values.items() %}
+              <span class="kv-key">{{ section_name }}.{{ key }}</span>
+              <span class="kv-value">{{ value }}</span>
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </article>
+    <article class="panel">
+      <div class="panel-header">
+        <h2>Log preview</h2>
+      </div>
+      <pre class="log-preview">{% for line in detail.logs_preview %}{{ line }}
+{% endfor %}</pre>
+    </article>
+  </section>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      window.dashboardCharts.renderPrecisionChart('precision-chart', {{ detail.precision_chart | tojson }});
+      window.dashboardCharts.renderFeatureChart('feature-chart', {{ detail.feature_importance_chart | tojson }});
+      {% for fold_name, event_chart in detail.event_charts.items() %}
+        window.dashboardCharts.renderEventChart('event-chart-{{ fold_name }}', {{ event_chart | tojson }}, '{{ fold_name|capitalize }} events');
+      {% endfor %}
+    });
+  </script>
+{% endblock %}

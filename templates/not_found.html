@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Not Found | XGBoost7 Dashboard{% endblock %}
+
+{% block content %}
+  <section class="panel empty-state">
+    <p class="eyebrow">404</p>
+    <h1>Run not found</h1>
+    <p>The requested run could not be loaded. It may not exist anymore or it may be missing required artifacts.</p>
+    <a class="button-link" href="{{ url_for('run_index') }}">Back to run list</a>
+  </section>
+{% endblock %}

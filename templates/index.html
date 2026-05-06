@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Run List | XGBoost7 Dashboard{% endblock %}
+
+{% block content %}
+  <section class="hero-panel">
+    <div>
+      <p class="eyebrow">Run Browser</p>
+      <h1>Completed runs</h1>
+      <p class="hero-copy">Each row links to a detail page with precision, events, feature importance, and config context.</p>
+    </div>
+    <div class="hero-stats">
+      <div class="stat-card">
+        <span class="stat-label">Valid runs</span>
+        <strong>{{ run_listing.runs | length }}</strong>
+      </div>
+      <div class="stat-card warning">
+        <span class="stat-label">Skipped runs</span>
+        <strong>{{ run_listing.skipped_count }}</strong>
+      </div>
+    </div>
+  </section>
+
+  {% if run_listing.runs %}
+    <section class="panel">
+      <div class="panel-header split">
+        <div>
+          <h2>Compare two runs</h2>
+          <p>Select a left and right run for side-by-side comparison.</p>
+        </div>
+      </div>
+      <form class="selector-form" method="get" action="{{ url_for('compare_runs') }}">
+        <label>
+          Left run
+          <select name="left">
+            {% for run in run_listing.runs %}
+              <option value="{{ run.run_id }}">{{ run.run_id }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Right run
+          <select name="right">
+            {% for run in run_listing.runs %}
+              <option value="{{ run.run_id }}" {% if loop.index == 2 %}selected{% endif %}>{{ run.run_id }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Open compare view</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Run list</h2>
+        <p>Sorted newest first. Validation and test precision at 0.5% are emphasized for fairer cross-run comparison.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Timestamp</th>
+              <th>Val P@0.5%</th>
+              <th>Test P@0.5%</th>
+              <th>Features</th>
+              <th>Model</th>
+              <th>Top feature</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in run_listing.runs %}
+              <tr>
+                <td><a class="row-link" href="{{ url_for('run_detail', run_id=run.run_id) }}">{{ run.run_id }}</a></td>
+                <td>{{ run.timestamp }}</td>
+                <td>{{ run.val_precision_at_0_5 | percent }}</td>
+                <td>{{ run.test_precision_at_0_5 | percent }}</td>
+                <td>{{ run.feature_count }}</td>
+                <td>
+                  depth {{ run.model.max_depth }}<br>
+                  trees {{ run.model.n_estimators }}
+                </td>
+                <td>
+                  {{ run.top_feature.feature or '-' }}<br>
+                  <span class="muted">{{ run.top_feature.importance | metric }}</span>
+                </td>
+                <td><a class="secondary-link" href="{{ url_for('run_detail', run_id=run.run_id) }}">Details</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% else %}
+    <section class="panel empty-state">
+      <h2>No valid runs found</h2>
+      <p>The dashboard reads directly from <code>outputs/runs</code>. Run training first to populate the dashboard.</p>
+    </section>
+  {% endif %}
+
+  {% if run_listing.skipped %}
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Skipped runs</h2>
+        <p>Incomplete directories are ignored instead of breaking the dashboard.</p>
+      </div>
+      <ul class="warning-list">
+        {% for skipped in run_listing.skipped %}
+          <li>{{ skipped.run_id }}: {{ skipped.reason }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+{% endblock %}

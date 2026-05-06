@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}XGBoost7 Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
+    <script src="{{ url_for('static', filename='dashboard.js') }}" defer></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <a class="brand" href="{{ url_for('run_index') }}">XGBoost7 Run Dashboard</a>
+          <p class="subtitle">Browse completed outputs, inspect one run, or compare two runs side by side.</p>
+        </div>
+        <nav class="nav-links">
+          <a href="{{ url_for('run_index') }}">Runs</a>
+          <a href="{{ url_for('compare_runs') }}">Compare</a>
+        </nav>
+      </header>
+      <main>
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </body>
+</html>
