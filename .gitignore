@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+venv*/
+
+# Local/editor files
+.env
+.env.*
+.vscode/
+.idea/
+
+# Data and generated ML artifacts
+data/raw/*
+!data/raw/.gitkeep
+data/interim/*
+!data/interim/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+outputs/debug/*
+!outputs/debug/.gitkeep
+outputs/runs/*
+!outputs/runs/.gitkeep
+
+# Model/artifact spillover
+*.pkl
+*.joblib
+*.parquet
+*.feather
+*.h5
+*.hdf5
+
+# Logs
+*.log
+logs.txt
