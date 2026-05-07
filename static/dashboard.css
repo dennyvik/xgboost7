@@ -224,6 +224,15 @@ button:hover,
   background: rgba(255, 255, 255, 0.86);
 }
 
+.selector-form input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.86);
+  font-family: inherit;
+}
+
 .table-wrap {
   overflow-x: auto;
 }

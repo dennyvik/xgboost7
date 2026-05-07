@@ -70,6 +70,8 @@ python scripts/run_dashboard.py
 
 Open `http://127.0.0.1:5000` in a browser.
 
+To start training from the web UI, open `http://127.0.0.1:5000/run-training`. Defaults load from `configs/config.yaml` and the outputs are written to `outputs/runs/`.
+
 The dashboard is read-only and loads its data directly from the existing run artifacts:
 
 ```text
