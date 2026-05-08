@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -203,7 +206,6 @@ def select_model_features(df_model: pd.DataFrame, config: dict[str, Any] | None 
 
 def _apply_best_params(config: dict[str, Any], best_params: dict[str, Any]) -> dict[str, Any]:
     """Return a shallow copy of *config* with model params updated from *best_params*."""
-    import copy
     updated = copy.deepcopy(config)
     updated.setdefault("model", {}).update(best_params)
     return updated

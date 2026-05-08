@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -95,16 +94,29 @@ def create_app(runs_dir: str | Path | None = None) -> Flask:
 
         Flask is the *interface layer only*: no training logic lives here.
         """
+        import logging
+        import traceback
         from src.pipelines.train_pipeline import run_pipeline  # local import — keep Flask thin
 
         config = request.get_json(force=True, silent=True)
         if not isinstance(config, dict):
             return jsonify({"error": "Request body must be a JSON object."}), 400
 
+        # Prevent user-supplied config from redirecting file output outside the
+        # project's designated runs directory.
+        config.setdefault("run", {})["output_dir"] = str(
+            PROJECT_ROOT / "outputs" / "runs"
+        )
+
         try:
             metrics = run_pipeline(config)
-        except Exception as exc:  # noqa: BLE001
-            return jsonify({"error": str(exc)}), 500
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).error(
+                "Pipeline execution failed:\n%s", traceback.format_exc()
+            )
+            return jsonify({"error": "Pipeline execution failed. Check server logs for details."}), 500
 
         return jsonify(
             {

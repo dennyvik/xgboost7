@@ -28,6 +28,9 @@ def run_shap_analysis(
     if not shap_config.get("enabled", False):
         return None
 
+    # Import here to avoid making shap a hard dependency at module load time.
+    # matplotlib backend is forced to non-interactive "Agg" before any pyplot
+    # import so that rendering works in headless environments.
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
