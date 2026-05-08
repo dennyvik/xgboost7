@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Run Training | XGBoost7 Dashboard{% endblock %}
+
+{% block content %}
+  <section class="hero-panel compact">
+    <div>
+      <p class="eyebrow">Run Training</p>
+      <h1>Start a new run</h1>
+      <p class="hero-copy">Defaults load from <code>configs/config.yaml</code>. Adjust a few basics and run the existing training pipeline.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Parameters</h2>
+      <p>No database is used. The run output is written to <code>outputs/runs</code> like the CLI.</p>
+    </div>
+
+    {% if errors %}
+      <ul class="warning-list">
+        {% for error in errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    <form class="selector-form" method="post" action="{{ url_for('run_training') }}">
+      {% for field in fields %}
+        <label>
+          {{ field.label }}
+          <input
+            name="{{ field.name }}"
+            type="{{ field.type }}"
+            value="{{ field.value }}"
+            {% if field.step %}step="{{ field.step }}"{% endif %}
+          >
+        </label>
+      {% endfor %}
+      <button type="submit">Run training</button>
+    </form>
+  </section>
+{% endblock %}
+

@@ -147,3 +147,115 @@ def test_train_endpoint_rejects_non_json_body(tmp_path):
     assert response.status_code == 400
     data = response.get_json()
     assert "error" in data
+
+
+def test_run_training_page_loads_defaults_from_config(tmp_path):
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    training_config_path = tmp_path / "config.yaml"
+    training_config_path.write_text(
+        yaml.safe_dump(
+            {
+                "data": {"path": "data/raw/sample.csv"},
+                "split": {"train_end": "2025-01-01", "val_end": "2025-06-01"},
+                "sampling": {"ratio": 8},
+                "label": {"horizon_bars": 10, "threshold": 0.0015},
+                "model": {
+                    "max_depth": 5,
+                    "learning_rate": 0.05,
+                    "n_estimators": 200,
+                    "scale_pos_weight": 8,
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    app = create_app(runs_dir, training_config_path=training_config_path)
+    client = app.test_client()
+    response = client.get("/run-training")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Start a new run" in body
+    assert 'name="data__path"' in body
+    assert 'value="data/raw/sample.csv"' in body
+    assert 'name="model__n_estimators"' in body
+    assert 'value="200"' in body
+
+
+def test_run_training_post_invokes_training_runner_with_overrides(tmp_path):
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    training_config_path = tmp_path / "config.yaml"
+    training_config_path.write_text(
+        yaml.safe_dump(
+            {
+                "data": {"path": "data/raw/sample.csv"},
+                "split": {"train_end": "2025-01-01", "val_end": "2025-06-01"},
+                "sampling": {"ratio": 8},
+                "label": {"horizon_bars": 10, "threshold": 0.0015},
+                "model": {
+                    "max_depth": 5,
+                    "learning_rate": 0.05,
+                    "n_estimators": 200,
+                    "scale_pos_weight": 8,
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    captured = {}
+
+    def fake_runner(config, *, config_path):
+        captured["config"] = config
+        captured["config_path"] = config_path
+        return {"run_id": "xgb7_m1_2026-05-07_0102"}
+
+    app = create_app(runs_dir, training_config_path=training_config_path)
+    app.config["TRAINING_RUNNER"] = fake_runner
+    client = app.test_client()
+
+    response = client.post(
+        "/run-training",
+        data={
+            "model__n_estimators": "123",
+            "model__max_depth": "4",
+            "label__threshold": "0.002",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Training Complete" in body
+    assert "xgb7_m1_2026-05-07_0102" in body
+    assert "/runs/xgb7_m1_2026-05-07_0102" in body
+    assert captured["config"]["model"]["n_estimators"] == 123
+    assert captured["config"]["model"]["max_depth"] == 4
+    assert captured["config"]["label"]["threshold"] == 0.002
+    assert str(captured["config_path"]).endswith(".yaml")
+
+
+def test_run_training_post_validation_errors_do_not_start_training(tmp_path):
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    training_config_path = tmp_path / "config.yaml"
+    training_config_path.write_text(
+        yaml.safe_dump({"model": {"n_estimators": 200}}, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    def should_not_run(*_args, **_kwargs):
+        raise AssertionError("Training runner should not be called on invalid form data")
+
+    app = create_app(runs_dir, training_config_path=training_config_path)
+    app.config["TRAINING_RUNNER"] = should_not_run
+    client = app.test_client()
+
+    response = client.post("/run-training", data={"model__n_estimators": "not-a-number"})
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "model__n_estimators must be an integer" in body
