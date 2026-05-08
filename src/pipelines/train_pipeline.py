@@ -8,14 +8,17 @@ from src.dataset.builder import assert_non_empty_splits, summarize_split, time_s
 from src.dataset.sampler import downsample_training_data, summarize_sampling
 from src.diagnostics.event_analysis import compute_event_statistics
 from src.evaluation.metrics import add_opportunity_rank, evaluate_opportunity_predictions
+from src.evaluation.shap_analysis import run_shap_analysis
 from src.events.builder import build_event_signals, summarize_events
 from src.features.builder import build_features, summarize_features
+from src.features.registry import get_active_features
 from src.labeling.opportunity import create_opportunity_label, summarize_labels
 from src.models.trainer import predict_opportunity, summarize_training, train_xgb_model
+from src.models.tuner import run_grid_search
 from src.utils.logger import log_kv, setup_logger
 from src.utils.run_manager import (
-    copy_config_to_run,
     create_run_directory,
+    save_config_to_run,
     save_debug_snapshot,
     save_feature_importance,
     save_metrics,
@@ -31,10 +34,10 @@ EXCLUDED_FEATURE_COLUMNS = {
 }
 
 
-def run_pipeline(config: dict[str, Any], config_path: str | Path = "configs/config.yaml") -> dict[str, Any]:
+def run_pipeline(config: dict[str, Any], config_path: str | Path | None = None) -> dict[str, Any]:
     run_id, run_dir = create_run_directory(config)
     logger = setup_logger(run_dir)
-    copy_config_to_run(config_path, run_dir)
+    save_config_to_run(config, run_dir, source_path=config_path)
 
     log_kv(logger, "run_created", run_id=run_id, run_dir=run_dir)
 
@@ -85,8 +88,8 @@ def run_pipeline(config: dict[str, Any], config_path: str | Path = "configs/conf
     )
     log_kv(logger, "training_downsampled", **summarize_sampling(df_train, df_train_sampled))
 
-    feature_columns = select_model_features(df_model)
-    log_kv(logger, "features_selected", feature_count=len(feature_columns))
+    feature_columns = select_model_features(df_model, config)
+    log_kv(logger, "features_selected", feature_count=len(feature_columns), features=feature_columns)
 
     X_train = df_train_sampled[feature_columns]
     y_train = df_train_sampled["target_opportunity"]
@@ -94,8 +97,26 @@ def run_pipeline(config: dict[str, Any], config_path: str | Path = "configs/conf
     y_val = df_val["target_opportunity"]
     X_test = df_test[feature_columns]
 
+    # Optional: GridSearchCV tuning
+    tuning_result = run_grid_search(X_train, y_train, config, run_dir)
+    if tuning_result is not None:
+        log_kv(
+            logger,
+            "tuning_complete",
+            total_combinations=tuning_result["total_combinations"],
+            total_fit_time=f"{tuning_result['total_fit_time']:.1f}s",
+            best_params=tuning_result["best_params"],
+        )
+        # Overlay best params onto model config so train_xgb_model picks them up
+        config = _apply_best_params(config, tuning_result["best_params"])
+
     model = train_xgb_model(X_train, y_train, X_val, y_val, config)
     log_kv(logger, "model_trained", **summarize_training(model, X_train, X_val))
+
+    # Optional: SHAP analysis
+    shap_importance = run_shap_analysis(model, X_val, config, run_dir)
+    if shap_importance is not None:
+        log_kv(logger, "shap_complete", features_analyzed=len(shap_importance))
 
     df_train_predictions = add_predictions(df_train_sampled, model, feature_columns)
     df_val_predictions = add_predictions(df_val, model, feature_columns)
@@ -120,6 +141,14 @@ def run_pipeline(config: dict[str, Any], config_path: str | Path = "configs/conf
             "test": compute_event_statistics(df_test_predictions, top_k_values),
         },
     }
+    if shap_importance is not None:
+        metrics["shap_importance"] = shap_importance
+    if tuning_result is not None:
+        metrics["tuning"] = {
+            "best_params": tuning_result["best_params"],
+            "total_combinations": tuning_result["total_combinations"],
+            "total_fit_time": tuning_result["total_fit_time"],
+        }
 
     for fold_name, fold_metrics in metrics["evaluation"].items():
         for precision_result in fold_metrics["precision_at_k"]:
@@ -142,12 +171,26 @@ def run_pipeline(config: dict[str, Any], config_path: str | Path = "configs/conf
     return metrics
 
 
-def select_model_features(df_model: pd.DataFrame) -> list[str]:
-    feature_columns = [
-        column
-        for column in df_model.select_dtypes(include="number").columns
-        if column not in EXCLUDED_FEATURE_COLUMNS
-    ]
+def select_model_features(df_model: pd.DataFrame, config: dict[str, Any] | None = None) -> list[str]:
+    """Return the list of feature columns to use for training.
+
+    When *config* contains a ``features`` section the feature registry is
+    consulted to honour enable/disable and group filters.  Only columns that
+    are both requested by the registry **and** present in *df_model* are
+    returned.  Without a ``features`` section all numeric columns that are not
+    in ``EXCLUDED_FEATURE_COLUMNS`` are used (original behaviour).
+    """
+    if config is not None and config.get("features"):
+        registry_features = get_active_features(config)
+        feature_columns = [
+            col for col in registry_features if col in df_model.columns
+        ]
+    else:
+        feature_columns = [
+            column
+            for column in df_model.select_dtypes(include="number").columns
+            if column not in EXCLUDED_FEATURE_COLUMNS
+        ]
 
     leaked_columns = EXCLUDED_FEATURE_COLUMNS.intersection(feature_columns)
     if leaked_columns:
@@ -156,6 +199,14 @@ def select_model_features(df_model: pd.DataFrame) -> list[str]:
         raise ValueError("No numeric feature columns available for training")
 
     return feature_columns
+
+
+def _apply_best_params(config: dict[str, Any], best_params: dict[str, Any]) -> dict[str, Any]:
+    """Return a shallow copy of *config* with model params updated from *best_params*."""
+    import copy
+    updated = copy.deepcopy(config)
+    updated.setdefault("model", {}).update(best_params)
+    return updated
 
 
 def add_predictions(

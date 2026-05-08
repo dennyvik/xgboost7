@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, abort, render_template, request
+from flask import Flask, abort, jsonify, render_template, request
 
 from src.dashboard.results_repository import DashboardResultsRepository, RunNotFoundError
 
@@ -38,6 +39,13 @@ def create_app(runs_dir: str | Path | None = None) -> Flask:
         repository = _get_repository(app)
         run_listing = repository.list_runs()
         return render_template("index.html", run_listing=run_listing)
+
+    @app.route("/runs", methods=["GET"])
+    def list_runs_api():
+        """Return a JSON summary of all valid runs."""
+        repository = _get_repository(app)
+        run_listing = repository.list_runs()
+        return jsonify(run_listing)
 
     @app.route("/runs/<run_id>")
     def run_detail(run_id: str) -> str:
@@ -75,6 +83,35 @@ def create_app(runs_dir: str | Path | None = None) -> Flask:
             left_run_id=left_run_id,
             right_run_id=right_run_id,
         )
+
+    @app.route("/train", methods=["POST"])
+    def trigger_training():
+        """Accept a training config and execute the pipeline.
+
+        The request body must be a JSON object whose keys mirror the
+        ``configs/config.yaml`` structure.  The pipeline runs synchronously
+        in the current thread; the response contains the resulting run_id and
+        a summary of top-level metrics.
+
+        Flask is the *interface layer only*: no training logic lives here.
+        """
+        from src.pipelines.train_pipeline import run_pipeline  # local import — keep Flask thin
+
+        config = request.get_json(force=True, silent=True)
+        if not isinstance(config, dict):
+            return jsonify({"error": "Request body must be a JSON object."}), 400
+
+        try:
+            metrics = run_pipeline(config)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 500
+
+        return jsonify(
+            {
+                "run_id": metrics.get("run_id"),
+                "feature_count": len(metrics.get("feature_columns", [])),
+            }
+        ), 201
 
     @app.errorhandler(404)
     def not_found(_: Any) -> tuple[str, int]:

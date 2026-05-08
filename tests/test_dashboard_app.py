@@ -123,3 +123,27 @@ def test_unknown_run_returns_not_found_page(tmp_path):
 
     assert response.status_code == 404
     assert "Run not found" in response.get_data(as_text=True)
+
+
+def test_get_runs_json_endpoint_returns_run_list(tmp_path):
+    runs_dir = tmp_path / "runs"
+    make_run(runs_dir, "xgb7_m1_2026-05-07_0102")
+
+    app = create_app(runs_dir)
+    client = app.test_client()
+    response = client.get("/runs")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert "runs" in data
+    assert any(r["run_id"] == "xgb7_m1_2026-05-07_0102" for r in data["runs"])
+
+
+def test_train_endpoint_rejects_non_json_body(tmp_path):
+    app = create_app(tmp_path / "runs")
+    client = app.test_client()
+    response = client.post("/train", data="not json", content_type="text/plain")
+
+    assert response.status_code == 400
+    data = response.get_json()
+    assert "error" in data
