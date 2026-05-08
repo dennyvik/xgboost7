@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Training Complete | XGBoost7 Dashboard{% endblock %}
+
+{% block content %}
+  <section class="hero-panel compact">
+    <div>
+      <p class="eyebrow">Training Complete</p>
+      <h1>{{ run_id or "Run finished" }}</h1>
+      <p class="hero-copy">Artifacts are available under <code>outputs/runs</code>. Open the run detail view for metrics, logs, and config.</p>
+    </div>
+    <div class="hero-actions">
+      {% if run_id %}
+        <a class="button-link" href="{{ url_for('run_detail', run_id=run_id) }}">View run details</a>
+      {% endif %}
+      <a class="secondary-link" href="{{ url_for('run_index') }}">Back to runs</a>
+    </div>
+  </section>
+{% endblock %}
+
