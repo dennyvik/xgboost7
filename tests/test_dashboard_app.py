@@ -201,6 +201,7 @@ def test_train_endpoint_rejects_unbounded_estimators_before_running(tmp_path):
         "/train",
         json={
             "data": {"path": "data/raw/sample.csv"},
+            "split": {"train_end": "2025-01-01", "val_end": "2025-06-01"},
             "model": {"n_estimators": 5001},
         },
     )
@@ -208,6 +209,53 @@ def test_train_endpoint_rejects_unbounded_estimators_before_running(tmp_path):
     assert response.status_code == 400
     data = response.get_json()
     assert data["error"] == "model.n_estimators must be <= 5000"
+
+
+def test_train_endpoint_uses_repository_runs_dir_for_output(tmp_path):
+    runs_dir = tmp_path / "custom-runs"
+    captured = {}
+
+    def fake_runner(config):
+        captured["config"] = config
+        return {"run_id": "xgb7_m1_2026-05-07_0102", "feature_columns": []}
+
+    app = create_app(runs_dir)
+    app.config["TRAINING_RUNNER"] = fake_runner
+    client = app.test_client()
+    response = client.post(
+        "/train",
+        json={
+            "data": {"path": "data/raw/sample.csv"},
+            "split": {"train_end": "2025-01-01", "val_end": "2025-06-01"},
+            "model": {"n_estimators": 200},
+            "run": {"output_dir": "/tmp/elsewhere"},
+        },
+    )
+
+    assert response.status_code == 201
+    assert captured["config"]["run"]["output_dir"] == str(runs_dir.resolve())
+
+
+def test_train_endpoint_rejects_missing_split_boundaries_before_running(tmp_path):
+    app = create_app(tmp_path / "runs")
+
+    def should_not_run(*_args, **_kwargs):
+        raise AssertionError("Training runner should not be called for invalid config")
+
+    app.config["TRAINING_RUNNER"] = should_not_run
+    client = app.test_client()
+    response = client.post(
+        "/train",
+        json={
+            "data": {"path": "data/raw/sample.csv"},
+            "split": {"val_end": "2025-06-01"},
+            "model": {"n_estimators": 200},
+        },
+    )
+
+    assert response.status_code == 400
+    data = response.get_json()
+    assert data["error"] == "split.train_end must be a non-empty string"
 
 
 def test_run_training_page_loads_defaults_from_config(tmp_path):

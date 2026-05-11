@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 from flask import Flask, abort, jsonify, render_template, request
 
 from src.pipelines.train_pipeline import run_pipeline
@@ -175,13 +176,14 @@ def create_app(
             return jsonify({"error": errors[0], "errors": errors}), 400
 
         # Prevent user-supplied config from redirecting file output outside the
-        # project's designated runs directory.
-        config["run"]["output_dir"] = str(PROJECT_ROOT / "outputs" / "runs")
+        # dashboard's configured runs directory.
+        repository = _get_repository(app)
+        config["run"]["output_dir"] = str(repository.runs_dir.resolve())
         training_runner = app.config["TRAINING_RUNNER"]
 
         try:
             metrics = training_runner(config)
-        except (FileNotFoundError, ValueError) as exc:
+        except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
         except Exception:  # noqa: BLE001
             logging.getLogger(__name__).error(
@@ -395,6 +397,13 @@ def _validate_submitted_training_config(config: dict[str, Any]) -> list[str]:
         if normalized_path is not None:
             data_config["path"] = normalized_path
 
+    split_config = _get_config_section(config, "split", errors, required=True)
+    if split_config is not None:
+        train_end = _validate_timestamp_value(split_config, "split", "train_end", errors)
+        val_end = _validate_timestamp_value(split_config, "split", "val_end", errors)
+        if train_end is not None and val_end is not None and train_end >= val_end:
+            errors.append("split.train_end must be earlier than split.val_end")
+
     _validate_bounded_integer(
         config,
         "model",
@@ -471,6 +480,30 @@ def _normalize_training_data_path(path_value: Any, errors: list[str]) -> str | N
         return None
 
     return str(resolved_path)
+
+
+def _validate_timestamp_value(
+    section: dict[str, Any],
+    section_name: str,
+    key: str,
+    errors: list[str],
+) -> pd.Timestamp | None:
+    value = section.get(key)
+    if not isinstance(value, str) or not value.strip():
+        errors.append(f"{section_name}.{key} must be a non-empty string")
+        return None
+
+    try:
+        timestamp = pd.Timestamp(value)
+    except (TypeError, ValueError):
+        errors.append(f"{section_name}.{key} must be a valid datetime")
+        return None
+
+    if pd.isna(timestamp):
+        errors.append(f"{section_name}.{key} must be a valid datetime")
+        return None
+
+    return timestamp
 
 
 def _validate_bounded_integer(

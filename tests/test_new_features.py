@@ -120,6 +120,11 @@ class TestSelectModelFeaturesWithRegistry:
         # only atr_14 and ret_3 are available AND in the selected groups
         assert set(result) == {"atr_14", "ret_3"}
 
+    def test_empty_features_section_uses_registry_features(self):
+        df = self._make_df()
+        result = select_model_features(df, {"features": {}})
+        assert result == ["atr_14", "ret_3", "event_vol_spike"]
+
     def test_no_features_config_falls_back_to_numeric_exclusion(self):
         df = self._make_df()
         result = select_model_features(df, config=None)

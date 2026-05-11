@@ -183,7 +183,7 @@ def select_model_features(df_model: pd.DataFrame, config: dict[str, Any] | None 
     returned.  Without a ``features`` section all numeric columns that are not
     in ``EXCLUDED_FEATURE_COLUMNS`` are used (original behaviour).
     """
-    if config is not None and config.get("features"):
+    if config is not None and "features" in config:
         registry_features = get_active_features(config)
         feature_columns = [
             col for col in registry_features if col in df_model.columns
