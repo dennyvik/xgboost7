@@ -12,7 +12,7 @@ from xgboost import XGBClassifier
 from src.evaluation.shap_analysis import run_shap_analysis
 from src.features.registry import FEATURE_REGISTRY, get_active_features
 from src.models.tuner import MAX_COMBINATIONS, run_grid_search
-from src.pipelines.train_pipeline import select_model_features
+from src.pipelines.train_pipeline import run_pipeline, select_model_features
 from src.utils.run_manager import save_config_to_run
 
 
@@ -34,6 +34,27 @@ def _make_tiny_xgb(X: pd.DataFrame, y: pd.Series) -> XGBClassifier:
     model = XGBClassifier(n_estimators=5, max_depth=2, random_state=0, eval_metric="logloss")
     model.fit(X, y)
     return model
+
+
+def _write_pipeline_csv(tmp_path: Path, rows: int = 240) -> Path:
+    index = np.arange(rows)
+    close = 100 + np.sin(index / 6.0) * 0.8 + index * 0.01
+    open_ = close + np.cos(index / 5.0) * 0.05
+    high = np.maximum(open_, close) + 0.25
+    low = np.minimum(open_, close) - 0.25
+
+    df = pd.DataFrame(
+        {
+            "datetime": pd.date_range("2025-01-01", periods=rows, freq="min"),
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+        }
+    )
+    data_path = tmp_path / "pipeline_sample.csv"
+    df.to_csv(data_path, index=False)
+    return data_path
 
 
 # ---------------------------------------------------------------------------
@@ -245,3 +266,49 @@ class TestSaveConfigToRun:
         config = {"model": {"max_depth": 5}}
         save_config_to_run(config, tmp_path, source_path="/nonexistent/path.yaml")
         assert (tmp_path / "config.yaml").exists()
+
+
+def test_run_pipeline_creates_tuning_and_shap_artifacts_with_feature_registry(tmp_path):
+    data_path = _write_pipeline_csv(tmp_path)
+    output_dir = tmp_path / "runs"
+    debug_dir = tmp_path / "debug"
+    config = {
+        "data": {"path": str(data_path)},
+        "run": {"model": "xgb7", "dataset": "itest", "output_dir": str(output_dir)},
+        "split": {
+            "train_end": "2025-01-01 02:39:00",
+            "val_end": "2025-01-01 03:19:00",
+        },
+        "sampling": {"ratio": 3, "random_state": 42},
+        "label": {"horizon_bars": 5, "threshold": 0.002},
+        "model": {
+            "max_depth": 3,
+            "learning_rate": 0.1,
+            "n_estimators": 12,
+            "scale_pos_weight": 1,
+            "random_state": 0,
+            "n_jobs": 1,
+        },
+        "evaluation": {"top_k": [1]},
+        "features": {"enabled": ["atr_14", "ret_3", "event_vol_spike"]},
+        "tuning": {
+            "enabled": True,
+            "param_grid": {"max_depth": [2, 3], "n_estimators": [8, 12]},
+            "cv": 2,
+        },
+        "shap": {"enabled": True, "sample_size": 25},
+        "debug": {"output_dir": str(debug_dir), "sample_rows": 10},
+    }
+
+    metrics = run_pipeline(config)
+    run_dir = output_dir / metrics["run_id"]
+
+    assert metrics["feature_columns"] == ["atr_14", "ret_3", "event_vol_spike"]
+    assert "tuning" in metrics
+    assert "shap_importance" in metrics
+    assert set(metrics["shap_importance"]) == set(metrics["feature_columns"])
+    assert (run_dir / "best_params.json").exists()
+    assert (run_dir / "cv_results.csv").exists()
+    assert (run_dir / "shap" / "summary_plot.png").exists()
+    assert (run_dir / "shap" / "bar_importance_plot.png").exists()
+    assert (run_dir / "shap" / "shap_importance.json").exists()

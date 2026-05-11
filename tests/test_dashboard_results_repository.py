@@ -96,12 +96,17 @@ def make_run(
         },
     }
     config = {
+        "data": {"path": "data/raw/sample.csv"},
+        "split": {"train_end": "2025-01-01", "val_end": "2025-06-01"},
+        "label": {"horizon_bars": 10, "threshold": 0.0015},
         "model": {
             "n_estimators": 200,
             "max_depth": 4,
             "learning_rate": 0.05,
             "scale_pos_weight": 8,
-        }
+        },
+        "tuning": {"enabled": True},
+        "shap": {"enabled": True},
     }
 
     (run_dir / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
@@ -113,7 +118,26 @@ def make_run(
                 {"feature": "close", "importance": 0.2},
             ]
         ).to_csv(run_dir / "feature_importance.csv", index=False)
-    (run_dir / "logs.txt").write_text("line1\nline2\n", encoding="utf-8")
+    (run_dir / "logs.txt").write_text(
+        "\n".join(
+            [
+                "2026-05-07 01:02:00,000 | INFO | root | data_loaded | rows=210 | date_start=2025-01-01 00:00:00 | date_end=2025-05-01 00:00:00 | missing_values=0 | duplicate_timestamps=0",
+                "2026-05-07 01:02:01,000 | INFO | root | features_built | feature_count=5 | nan_count=12",
+                "2026-05-07 01:02:02,000 | INFO | root | events_built | event_count=1 | event_columns=['event_vol_spike']",
+                "2026-05-07 01:02:03,000 | INFO | root | labels_created | label_distribution={0: 180, 1: 30} | positive_rate=0.142857",
+                "2026-05-07 01:02:04,000 | INFO | root | split_summary | split=train | rows=120 | label_distribution={0: 100, 1: 20} | positive_rate=0.166667",
+                "2026-05-07 01:02:05,000 | INFO | root | split_summary | split=val | rows=50 | label_distribution={0: 40, 1: 10} | positive_rate=0.2",
+                "2026-05-07 01:02:06,000 | INFO | root | split_summary | split=test | rows=60 | label_distribution={0: 42, 1: 18} | positive_rate=0.3",
+                "2026-05-07 01:02:07,000 | INFO | root | training_downsampled | train_rows_before=120 | train_rows_after=100 | positive_before=20 | positive_after=20 | negative_before=100 | negative_after=80",
+                "2026-05-07 01:02:08,000 | INFO | root | features_selected | feature_count=3 | features=['open', 'close', 'event_vol_spike']",
+                "2026-05-07 01:02:09,000 | INFO | root | tuning_complete | total_combinations=4 | total_fit_time=2.3s | best_params={'max_depth': 4, 'n_estimators': 200}",
+                "2026-05-07 01:02:10,000 | INFO | root | model_trained | train_size=100 | val_size=50 | best_iteration=None | validation_score=0.42",
+                "2026-05-07 01:02:11,000 | INFO | root | shap_complete | features_analyzed=3",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return run_dir
 
 
@@ -143,9 +167,13 @@ def test_get_run_detail_builds_chart_payloads(tmp_path):
 
     assert detail["summary"]["val_precision_at_0_5"] == pytest.approx(0.44)
     assert detail["precision_chart"]["labels"] == ["0.5", "1"]
+    assert detail["quality_chart"]["labels"] == ["Top 0.5%", "Top 1%"]
+    assert detail["scorecard"]["val_lift_at_0_5"] == pytest.approx(2.2)
     assert detail["feature_importance_chart"]["labels"] == ["event_vol_spike", "close"]
-    assert detail["event_charts"]["val"]["event_names"] == ["event_vol_spike"]
-    assert detail["logs_preview"] == ["line1", "line2"]
+    assert detail["event_charts"]["val"]["baseline_at_0_5"] == [0.2]
+    assert detail["training_chart"]["labels"] == ["Raw train", "Sampled train", "Validation", "Test"]
+    assert detail["training_timeline"][0]["title"] == "Loaded data"
+    assert detail["logs_preview"][0].startswith("2026-05-07 01:02:00,000")
 
 
 def test_get_compare_payload_aligns_different_features_and_events(tmp_path):

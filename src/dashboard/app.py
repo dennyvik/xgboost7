@@ -14,6 +14,10 @@ from src.utils.run_manager import write_config
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+TRAINING_DATA_ROOT = (PROJECT_ROOT / "data").resolve()
+MAX_TRAINING_N_ESTIMATORS = 5000
+MAX_TRAINING_CV_SPLITS = 10
+MAX_TRAINING_SHAP_SAMPLE_SIZE = 50000
 
 
 def create_app(
@@ -46,6 +50,12 @@ def create_app(
         if value is None:
             return "-"
         return f"{float(value):.{digits}f}"
+
+    @app.template_filter("intcomma")
+    def intcomma_filter(value: Any) -> str:
+        if value is None:
+            return "-"
+        return f"{int(value):,}"
 
     @app.route("/")
     def run_index() -> str:
@@ -129,6 +139,12 @@ def create_app(
             config_writer(updated_config, temp_config_path)
 
             metrics = training_runner(updated_config, config_path=temp_config_path)
+        except (FileNotFoundError, ValueError) as exc:
+            return render_template(
+                "run_training.html",
+                fields=updated_fields,
+                errors=[str(exc)],
+            )
         finally:
             if temp_config_path and temp_config_path.exists():
                 temp_config_path.unlink(missing_ok=True)
@@ -154,15 +170,18 @@ def create_app(
         if not isinstance(config, dict):
             return jsonify({"error": "Request body must be a JSON object."}), 400
 
+        errors = _validate_submitted_training_config(config)
+        if errors:
+            return jsonify({"error": errors[0], "errors": errors}), 400
+
         # Prevent user-supplied config from redirecting file output outside the
         # project's designated runs directory.
-        config.setdefault("run", {})["output_dir"] = str(
-            PROJECT_ROOT / "outputs" / "runs"
-        )
+        config["run"]["output_dir"] = str(PROJECT_ROOT / "outputs" / "runs")
+        training_runner = app.config["TRAINING_RUNNER"]
 
         try:
-            metrics = run_pipeline(config)
-        except ValueError as exc:
+            metrics = training_runner(config)
+        except (FileNotFoundError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
         except Exception:  # noqa: BLE001
             logging.getLogger(__name__).error(
@@ -361,5 +380,118 @@ def _apply_training_form(
             errors.append("model__scale_pos_weight must be >= 1")
         set_nested("model", "scale_pos_weight", scale_pos_weight)
 
+    errors.extend(_validate_submitted_training_config(updated))
+    errors = list(dict.fromkeys(errors))
     updated_fields = _build_training_fields(updated)
     return updated, errors, updated_fields
+
+
+def _validate_submitted_training_config(config: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+
+    data_config = _get_config_section(config, "data", errors, required=True)
+    if data_config is not None:
+        normalized_path = _normalize_training_data_path(data_config.get("path"), errors)
+        if normalized_path is not None:
+            data_config["path"] = normalized_path
+
+    _validate_bounded_integer(
+        config,
+        "model",
+        "n_estimators",
+        minimum=1,
+        maximum=MAX_TRAINING_N_ESTIMATORS,
+        errors=errors,
+    )
+
+    tuning_config = _get_config_section(config, "tuning", errors)
+    if tuning_config is not None and tuning_config.get("enabled"):
+        _validate_bounded_integer(
+            config,
+            "tuning",
+            "cv",
+            minimum=2,
+            maximum=MAX_TRAINING_CV_SPLITS,
+            errors=errors,
+        )
+
+    shap_config = _get_config_section(config, "shap", errors)
+    if shap_config is not None and shap_config.get("enabled"):
+        _validate_bounded_integer(
+            config,
+            "shap",
+            "sample_size",
+            minimum=1,
+            maximum=MAX_TRAINING_SHAP_SAMPLE_SIZE,
+            errors=errors,
+        )
+
+    _get_config_section(config, "run", errors, create=True)
+    return list(dict.fromkeys(errors))
+
+
+def _get_config_section(
+    config: dict[str, Any],
+    section_name: str,
+    errors: list[str],
+    *,
+    required: bool = False,
+    create: bool = False,
+) -> dict[str, Any] | None:
+    section = config.get(section_name)
+    if section is None:
+        if create:
+            config[section_name] = {}
+            return config[section_name]
+        if required:
+            errors.append(f"{section_name} must be an object")
+        return None
+
+    if not isinstance(section, dict):
+        errors.append(f"{section_name} must be an object")
+        return None
+
+    return section
+
+
+def _normalize_training_data_path(path_value: Any, errors: list[str]) -> str | None:
+    if not isinstance(path_value, str) or not path_value.strip():
+        errors.append("data.path must be a non-empty string")
+        return None
+
+    candidate_path = Path(path_value.strip())
+    if not candidate_path.is_absolute():
+        candidate_path = PROJECT_ROOT / candidate_path
+
+    resolved_path = candidate_path.resolve(strict=False)
+    try:
+        resolved_path.relative_to(TRAINING_DATA_ROOT)
+    except ValueError:
+        errors.append(f"data.path must stay within {TRAINING_DATA_ROOT}")
+        return None
+
+    return str(resolved_path)
+
+
+def _validate_bounded_integer(
+    config: dict[str, Any],
+    section_name: str,
+    key: str,
+    *,
+    minimum: int,
+    maximum: int,
+    errors: list[str],
+) -> None:
+    section = _get_config_section(config, section_name, errors)
+    if section is None or key not in section:
+        return
+
+    value = section[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        errors.append(f"{section_name}.{key} must be an integer")
+        return
+
+    if value < minimum:
+        errors.append(f"{section_name}.{key} must be >= {minimum}")
+    if value > maximum:
+        errors.append(f"{section_name}.{key} must be <= {maximum}")

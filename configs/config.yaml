@@ -43,7 +43,7 @@ features: {}
 
 # GridSearchCV tuning — disabled by default.
 tuning:
-  enabled: false
+  enabled: true
   method: grid
   param_grid:
     max_depth: [4, 6]
@@ -53,7 +53,7 @@ tuning:
 
 # SHAP analysis — disabled by default.
 shap:
-  enabled: false
+  enabled: true
   sample_size: 10000
 
 debug:
