@@ -57,7 +57,24 @@ def test_build_features_and_events_create_expected_columns():
     df_feat = build_features(make_ohlc_data())
     df_event = build_event_signals(df_feat)
 
-    for column in ["atr_14", "atr_28", "ret_3", "ret_6", "range_ratio"]:
+    for column in [
+        "atr_14",
+        "atr_28",
+        "ret_3",
+        "ret_6",
+        "range_ratio",
+        "ema_5_close",
+        "ema_20_close",
+        "ema_5_to_ema_20_ratio",
+        "close_to_ema_5_ratio",
+        "close_to_ema_20_ratio",
+        "macd_12_26_9",
+        "macd_hist_12_26_9",
+        "macd_signal_12_26_9",
+        "rsi_14",
+        "stoch_k_14_3_3",
+        "stoch_d_14_3_3",
+    ]:
         assert column in df_feat.columns
     assert "event_vol_spike" in df_event.columns
     assert "event_impulse" in df_event.columns

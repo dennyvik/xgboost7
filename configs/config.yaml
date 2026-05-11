@@ -38,12 +38,14 @@ evaluation:
 # Feature selection — omit or leave empty to use all registry features.
 # Supported keys:
 #   enabled: explicit list of feature names
-#   groups:  list of groups  (momentum | volatility | structure | event)
-features: {}
+#   groups:  list of groups  (momentum | volatility | structure | trend | event)
+features: {
+
+}
 
 # GridSearchCV tuning — disabled by default.
 tuning:
-  enabled: false
+  enabled: true
   method: grid
   param_grid:
     max_depth: [4, 6]
@@ -53,7 +55,7 @@ tuning:
 
 # SHAP analysis — disabled by default.
 shap:
-  enabled: false
+  enabled: true
   sample_size: 10000
 
 debug:
