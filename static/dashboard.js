@@ -1,4 +1,40 @@
 (function () {
+  function formatPercentValue(value) {
+    if (value === null || value === undefined) {
+      return '-';
+    }
+    return (value * 100).toFixed(2) + '%';
+  }
+
+  function formatCountValue(value) {
+    if (value === null || value === undefined) {
+      return '-';
+    }
+    return new Intl.NumberFormat().format(value);
+  }
+
+  function percentScaleOptions() {
+    return {
+      beginAtZero: true,
+      suggestedMax: 1,
+      ticks: {
+        callback: function (value) {
+          return value * 100 + '%';
+        },
+      },
+    };
+  }
+
+  function percentTooltipOptions() {
+    return {
+      callbacks: {
+        label: function (context) {
+          return context.dataset.label + ': ' + formatPercentValue(context.parsed.y);
+        },
+      },
+    };
+  }
+
   function buildLineDataset(label, data, color, fill) {
     return {
       label: label,
@@ -8,6 +44,19 @@
       tension: 0.25,
       pointRadius: 3,
       pointHoverRadius: 4,
+    };
+  }
+
+  function buildDashedLineDataset(label, data, color) {
+    return {
+      label: label,
+      data: data,
+      borderColor: color,
+      backgroundColor: color,
+      borderDash: [6, 6],
+      tension: 0,
+      pointRadius: 0,
+      pointHoverRadius: 0,
     };
   }
 
@@ -42,9 +91,37 @@
         maintainAspectRatio: false,
         plugins: {
           legend: { position: 'bottom' },
+          tooltip: percentTooltipOptions(),
         },
         scales: {
-          y: { beginAtZero: true, suggestedMax: 1 },
+          y: percentScaleOptions(),
+        },
+      },
+    });
+  }
+
+  function renderQualityChart(canvasId, qualityChart) {
+    createChart(canvasId, {
+      type: 'line',
+      data: {
+        labels: qualityChart.labels,
+        datasets: [
+          buildLineDataset('train precision', qualityChart.train_precision, '#b45309'),
+          buildLineDataset('validation precision', qualityChart.val_precision, '#0f766e'),
+          buildLineDataset('test precision', qualityChart.test_precision, '#1d4ed8'),
+          buildDashedLineDataset('validation baseline', qualityChart.val_baseline, '#115e59'),
+          buildDashedLineDataset('test baseline', qualityChart.test_baseline, '#1e3a8a'),
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: percentTooltipOptions(),
+        },
+        scales: {
+          y: percentScaleOptions(),
         },
       },
     });
@@ -69,6 +146,54 @@
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                return 'importance: ' + context.parsed.x.toFixed(4);
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function renderTrainingSplitChart(canvasId, trainingChart) {
+    createChart(canvasId, {
+      type: 'bar',
+      data: {
+        labels: trainingChart.labels,
+        datasets: [
+          {
+            label: 'rows',
+            data: trainingChart.values,
+            backgroundColor: trainingChart.colors,
+            borderRadius: 10,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                return 'rows: ' + formatCountValue(context.parsed.y);
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function (value) {
+                return formatCountValue(value);
+              },
+            },
+          },
         },
       },
     });
@@ -81,13 +206,13 @@
         labels: eventChart.event_names,
         datasets: [
           {
-            label: 'event rate',
-            data: eventChart.event_rate,
+            label: 'precision @ 0.5%',
+            data: eventChart.precision_at_0_5,
             backgroundColor: '#c2410c',
           },
           {
-            label: 'precision @ 0.5%',
-            data: eventChart.precision_at_0_5,
+            label: 'baseline',
+            data: eventChart.baseline_at_0_5,
             backgroundColor: '#0f766e',
           },
         ],
@@ -98,9 +223,10 @@
         plugins: {
           title: { display: true, text: title },
           legend: { position: 'bottom' },
+          tooltip: percentTooltipOptions(),
         },
         scales: {
-          y: { beginAtZero: true, suggestedMax: 1 },
+          y: percentScaleOptions(),
         },
       },
     });
@@ -132,8 +258,8 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom' } },
-        scales: { y: { beginAtZero: true, suggestedMax: 1 } },
+        plugins: { legend: { position: 'bottom' }, tooltip: percentTooltipOptions() },
+        scales: { y: percentScaleOptions() },
       },
     });
   }
@@ -183,21 +309,24 @@
           },
         ],
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          title: { display: true, text: title },
-          legend: { position: 'bottom' },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: { display: true, text: title },
+            legend: { position: 'bottom' },
+            tooltip: percentTooltipOptions(),
+          },
+          scales: { y: percentScaleOptions() },
         },
-        scales: { y: { beginAtZero: true, suggestedMax: 1 } },
-      },
-    });
+      });
   }
 
   window.dashboardCharts = {
     renderPrecisionChart: renderPrecisionChart,
+    renderQualityChart: renderQualityChart,
     renderFeatureChart: renderFeatureChart,
+    renderTrainingSplitChart: renderTrainingSplitChart,
     renderEventChart: renderEventChart,
     renderComparePrecisionChart: renderComparePrecisionChart,
     renderCompareFeatureChart: renderCompareFeatureChart,

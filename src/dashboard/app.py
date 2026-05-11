@@ -5,7 +5,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, abort, render_template, request
+import pandas as pd
+from flask import Flask, abort, jsonify, render_template, request
 
 from src.pipelines.train_pipeline import run_pipeline
 from src.dashboard.results_repository import DashboardResultsRepository, RunNotFoundError
@@ -14,6 +15,10 @@ from src.utils.run_manager import write_config
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+TRAINING_DATA_ROOT = (PROJECT_ROOT / "data").resolve()
+MAX_TRAINING_N_ESTIMATORS = 5000
+MAX_TRAINING_CV_SPLITS = 10
+MAX_TRAINING_SHAP_SAMPLE_SIZE = 50000
 
 
 def create_app(
@@ -47,11 +52,24 @@ def create_app(
             return "-"
         return f"{float(value):.{digits}f}"
 
+    @app.template_filter("intcomma")
+    def intcomma_filter(value: Any) -> str:
+        if value is None:
+            return "-"
+        return f"{int(value):,}"
+
     @app.route("/")
     def run_index() -> str:
         repository = _get_repository(app)
         run_listing = repository.list_runs()
         return render_template("index.html", run_listing=run_listing)
+
+    @app.route("/runs", methods=["GET"])
+    def list_runs_api():
+        """Return a JSON summary of all valid runs."""
+        repository = _get_repository(app)
+        run_listing = repository.list_runs()
+        return jsonify(run_listing)
 
     @app.route("/runs/<run_id>")
     def run_detail(run_id: str) -> str:
@@ -122,12 +140,63 @@ def create_app(
             config_writer(updated_config, temp_config_path)
 
             metrics = training_runner(updated_config, config_path=temp_config_path)
+        except (FileNotFoundError, ValueError) as exc:
+            return render_template(
+                "run_training.html",
+                fields=updated_fields,
+                errors=[str(exc)],
+            )
         finally:
             if temp_config_path and temp_config_path.exists():
                 temp_config_path.unlink(missing_ok=True)
 
         run_id = metrics.get("run_id")
         return render_template("training_complete.html", run_id=run_id)
+
+    @app.route("/train", methods=["POST"])
+    def trigger_training():
+        """Accept a training config JSON and execute the pipeline.
+
+        The request body must be a JSON object whose keys mirror the
+        ``configs/config.yaml`` structure.  The pipeline runs synchronously
+        in the current thread; the response contains the resulting run_id and
+        a summary of top-level metrics.
+
+        Flask is the *interface layer only*: no training logic lives here.
+        """
+        import logging
+        import traceback
+
+        config = request.get_json(force=True, silent=True)
+        if not isinstance(config, dict):
+            return jsonify({"error": "Request body must be a JSON object."}), 400
+
+        errors = _validate_submitted_training_config(config)
+        if errors:
+            return jsonify({"error": errors[0], "errors": errors}), 400
+
+        # Prevent user-supplied config from redirecting file output outside the
+        # dashboard's configured runs directory.
+        repository = _get_repository(app)
+        config["run"]["output_dir"] = str(repository.runs_dir.resolve())
+        training_runner = app.config["TRAINING_RUNNER"]
+
+        try:
+            metrics = training_runner(config)
+        except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).error(
+                "Pipeline execution failed:\n%s", traceback.format_exc()
+            )
+            return jsonify({"error": "Pipeline execution failed. Check server logs for details."}), 500
+
+        return jsonify(
+            {
+                "run_id": metrics.get("run_id"),
+                "feature_count": len(metrics.get("feature_columns", [])),
+            }
+        ), 201
 
     @app.errorhandler(404)
     def not_found(_: Any) -> tuple[str, int]:
@@ -313,5 +382,149 @@ def _apply_training_form(
             errors.append("model__scale_pos_weight must be >= 1")
         set_nested("model", "scale_pos_weight", scale_pos_weight)
 
+    errors.extend(_validate_submitted_training_config(updated))
+    errors = list(dict.fromkeys(errors))
     updated_fields = _build_training_fields(updated)
     return updated, errors, updated_fields
+
+
+def _validate_submitted_training_config(config: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+
+    data_config = _get_config_section(config, "data", errors, required=True)
+    if data_config is not None:
+        normalized_path = _normalize_training_data_path(data_config.get("path"), errors)
+        if normalized_path is not None:
+            data_config["path"] = normalized_path
+
+    split_config = _get_config_section(config, "split", errors, required=True)
+    if split_config is not None:
+        train_end = _validate_timestamp_value(split_config, "split", "train_end", errors)
+        val_end = _validate_timestamp_value(split_config, "split", "val_end", errors)
+        if train_end is not None and val_end is not None and train_end >= val_end:
+            errors.append("split.train_end must be earlier than split.val_end")
+
+    _validate_bounded_integer(
+        config,
+        "model",
+        "n_estimators",
+        minimum=1,
+        maximum=MAX_TRAINING_N_ESTIMATORS,
+        errors=errors,
+    )
+
+    tuning_config = _get_config_section(config, "tuning", errors)
+    if tuning_config is not None and tuning_config.get("enabled"):
+        _validate_bounded_integer(
+            config,
+            "tuning",
+            "cv",
+            minimum=2,
+            maximum=MAX_TRAINING_CV_SPLITS,
+            errors=errors,
+        )
+
+    shap_config = _get_config_section(config, "shap", errors)
+    if shap_config is not None and shap_config.get("enabled"):
+        _validate_bounded_integer(
+            config,
+            "shap",
+            "sample_size",
+            minimum=1,
+            maximum=MAX_TRAINING_SHAP_SAMPLE_SIZE,
+            errors=errors,
+        )
+
+    _get_config_section(config, "run", errors, create=True)
+    return list(dict.fromkeys(errors))
+
+
+def _get_config_section(
+    config: dict[str, Any],
+    section_name: str,
+    errors: list[str],
+    *,
+    required: bool = False,
+    create: bool = False,
+) -> dict[str, Any] | None:
+    section = config.get(section_name)
+    if section is None:
+        if create:
+            config[section_name] = {}
+            return config[section_name]
+        if required:
+            errors.append(f"{section_name} must be an object")
+        return None
+
+    if not isinstance(section, dict):
+        errors.append(f"{section_name} must be an object")
+        return None
+
+    return section
+
+
+def _normalize_training_data_path(path_value: Any, errors: list[str]) -> str | None:
+    if not isinstance(path_value, str) or not path_value.strip():
+        errors.append("data.path must be a non-empty string")
+        return None
+
+    candidate_path = Path(path_value.strip())
+    if not candidate_path.is_absolute():
+        candidate_path = PROJECT_ROOT / candidate_path
+
+    resolved_path = candidate_path.resolve(strict=False)
+    try:
+        resolved_path.relative_to(TRAINING_DATA_ROOT)
+    except ValueError:
+        errors.append(f"data.path must stay within {TRAINING_DATA_ROOT}")
+        return None
+
+    return str(resolved_path)
+
+
+def _validate_timestamp_value(
+    section: dict[str, Any],
+    section_name: str,
+    key: str,
+    errors: list[str],
+) -> pd.Timestamp | None:
+    value = section.get(key)
+    if not isinstance(value, str) or not value.strip():
+        errors.append(f"{section_name}.{key} must be a non-empty string")
+        return None
+
+    try:
+        timestamp = pd.Timestamp(value)
+    except (TypeError, ValueError):
+        errors.append(f"{section_name}.{key} must be a valid datetime")
+        return None
+
+    if pd.isna(timestamp):
+        errors.append(f"{section_name}.{key} must be a valid datetime")
+        return None
+
+    return timestamp
+
+
+def _validate_bounded_integer(
+    config: dict[str, Any],
+    section_name: str,
+    key: str,
+    *,
+    minimum: int,
+    maximum: int,
+    errors: list[str],
+) -> None:
+    section = _get_config_section(config, section_name, errors)
+    if section is None or key not in section:
+        return
+
+    value = section[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        errors.append(f"{section_name}.{key} must be an integer")
+        return
+
+    if value < minimum:
+        errors.append(f"{section_name}.{key} must be >= {minimum}")
+    if value > maximum:
+        errors.append(f"{section_name}.{key} must be <= {maximum}")

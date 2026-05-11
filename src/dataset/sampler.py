@@ -26,10 +26,9 @@ def downsample_training_data(
         replace=False,
     )
 
-    return (
-        pd.concat([df_positive, df_negative_sample], axis=0)
-        .sample(frac=1, random_state=random_state)
-        .reset_index(drop=True)
+    # Preserve the original time order so downstream time-series CV remains valid.
+    return pd.concat([df_positive, df_negative_sample], axis=0).sort_index().reset_index(
+        drop=True
     )
 
 

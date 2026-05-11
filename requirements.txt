@@ -6,3 +6,5 @@ pyyaml
 joblib
 pytest
 flask
+shap
+matplotlib

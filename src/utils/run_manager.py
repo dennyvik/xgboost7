@@ -43,6 +43,26 @@ def copy_config_to_run(config_path: str | Path, run_dir: str | Path) -> Path:
     return target_path
 
 
+def save_config_to_run(
+    config: dict[str, Any],
+    run_dir: str | Path,
+    source_path: str | Path | None = None,
+) -> Path:
+    """Save *config* as ``config.yaml`` inside *run_dir*.
+
+    When *source_path* is provided and the file exists it is copied verbatim
+    (preserving comments).  Otherwise the in-memory dict is serialised with
+    ``yaml.safe_dump`` so that API-driven runs always produce a config file.
+    """
+    target_path = Path(run_dir) / "config.yaml"
+    if source_path is not None and Path(source_path).exists():
+        shutil.copy2(source_path, target_path)
+    else:
+        with target_path.open("w", encoding="utf-8") as config_file:
+            yaml.safe_dump(config, config_file, sort_keys=False)
+    return target_path
+
+
 def save_metrics(metrics: dict[str, Any], run_dir: str | Path) -> Path:
     metrics_path = Path(run_dir) / "metrics.json"
     with metrics_path.open("w", encoding="utf-8") as metrics_file:

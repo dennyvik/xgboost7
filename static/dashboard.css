@@ -177,6 +177,18 @@ button:hover,
   background: var(--warning-soft);
 }
 
+.tone-card--success {
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.14), rgba(255, 255, 255, 0.92));
+}
+
+.tone-card--accent {
+  background: linear-gradient(180deg, rgba(29, 78, 216, 0.10), rgba(255, 255, 255, 0.92));
+}
+
+.tone-card--warning {
+  background: linear-gradient(180deg, rgba(180, 83, 9, 0.14), rgba(255, 255, 255, 0.92));
+}
+
 .stat-label {
   display: block;
   color: var(--muted);
@@ -299,6 +311,75 @@ button:hover,
 
 .muted {
   color: var(--muted);
+}
+
+.insight-list,
+.tip-list,
+.timeline-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.insight-list li,
+.tip-list li,
+.timeline-list li {
+  margin-bottom: 12px;
+}
+
+.example-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(15, 118, 110, 0.08);
+}
+
+.example-panel h3 {
+  margin: 0 0 8px;
+}
+
+.timeline-list li {
+  padding-left: 4px;
+}
+
+.timeline-list strong,
+.event-card h3 {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.timeline-list span {
+  color: var(--muted);
+}
+
+.event-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.event-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.disclosure-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.disclosure-panel summary {
+  padding: 22px;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.disclosure-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure-body {
+  padding: 0 22px 22px;
 }
 
 .empty-state {

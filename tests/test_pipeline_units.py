@@ -96,6 +96,7 @@ def test_downsample_training_data_keeps_all_positives_and_limits_negatives():
 
     assert int((df_sampled["target_opportunity"] == 1).sum()) == 2
     assert int((df_sampled["target_opportunity"] == 0).sum()) == 4
+    assert df_sampled["datetime"].is_monotonic_increasing
 
 
 def test_precision_at_k_and_rank_are_deterministic():
