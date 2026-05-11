@@ -7,20 +7,20 @@ import pandas_ta_classic as ta
 FEATURE_COLUMNS = [
     "atr_14",
     "atr_28",
-    "ret_3",
-    "ret_6",
+    # "ret_3",
+    # "ret_6",
     "range_ratio",
     "ema_5_close",
     "ema_20_close",
-    "ema_5_to_ema_20_ratio",
+    # "ema_5_to_ema_20_ratio",
+    "ema_cross",
+    "ema_cross_up",
+    "ema_cross_down",
     "close_to_ema_5_ratio",
     "close_to_ema_20_ratio",
     "macd_12_26_9",
     "macd_hist_12_26_9",
     "macd_signal_12_26_9",
-    "macd_8_21_5",
-    "macd_hist_8_21_5",
-    "macd_signal_8_21_5",
     "rsi_14",
     "rsi_7",
     "stoch_k_14_3_3",
@@ -41,6 +41,35 @@ def compute_returns(df_raw: pd.DataFrame, window: int) -> pd.Series:
 
 def compute_ema(df_raw: pd.DataFrame, window: int) -> pd.Series:
     return ta.ema(df_raw["close"], length=window)
+
+
+def _latest_non_zero_cross(window_values: Any) -> int:
+    for value in reversed(window_values):
+        if pd.notna(value) and value != 0:
+            return int(value)
+    return 0
+
+
+def compute_ema_cross_signal(
+    ema_fast: pd.Series,
+    ema_slow: pd.Series,
+    lookback: int = 5,
+) -> pd.Series:
+    ema_spread = ema_fast - ema_slow
+    prior_spread = ema_spread.shift(1)
+
+    cross_events = pd.Series(0, index=ema_spread.index, dtype="int64")
+    cross_events.loc[(prior_spread <= 0) & (ema_spread > 0)] = 1
+    cross_events.loc[(prior_spread >= 0) & (ema_spread < 0)] = -1
+
+    # Exclude the current row and retain the latest cross seen in the prior lookback window.
+    return (
+        cross_events.shift(1)
+        .rolling(window=lookback, min_periods=1)
+        .apply(_latest_non_zero_cross, raw=True)
+        .fillna(0)
+        .astype(int)
+    )
 
 
 def compute_macd(
@@ -82,6 +111,14 @@ def build_features(df_raw: pd.DataFrame) -> pd.DataFrame:
     df_feat["range_ratio"] = (df_feat["high"] - df_feat["low"]) / df_feat["close"]
     df_feat["ema_5_close"] = compute_ema(df_feat, 5)
     df_feat["ema_20_close"] = compute_ema(df_feat, 20)
+    # df_feat["ema_5_to_ema_20_ratio"] = df_feat["ema_5_close"] / df_feat["ema_20_close"]
+    df_feat["ema_cross"] = compute_ema_cross_signal(
+        df_feat["ema_5_close"],
+        df_feat["ema_20_close"],
+        lookback=5,
+    )
+    df_feat["ema_cross_up"] = (df_feat["ema_cross"] == 1).astype(int)
+    df_feat["ema_cross_down"] = (df_feat["ema_cross"] == -1).astype(int)
     df_feat["close_to_ema_5_ratio"] = df_feat["close"] / df_feat["ema_5_close"]
     df_feat["close_to_ema_20_ratio"] = df_feat["close"] / df_feat["ema_20_close"]
 
@@ -89,11 +126,6 @@ def build_features(df_raw: pd.DataFrame) -> pd.DataFrame:
     df_feat["macd_12_26_9"] = macd["MACD_12_26_9"]
     df_feat["macd_hist_12_26_9"] = macd["MACDh_12_26_9"]
     df_feat["macd_signal_12_26_9"] = macd["MACDs_12_26_9"]
-
-    macd_8_21_5 = compute_macd(df_feat, fast=8, slow=21, signal=5)
-    df_feat["macd_8_21_5"] = macd_8_21_5["MACD_8_21_5"]
-    df_feat["macd_hist_8_21_5"] = macd_8_21_5["MACDh_8_21_5"]
-    df_feat["macd_signal_8_21_5"] = macd_8_21_5["MACDs_8_21_5"]
 
     df_feat["rsi_14"] = compute_rsi(df_feat, 14)
     df_feat["rsi_7"] = compute_rsi(df_feat, 7)

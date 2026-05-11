@@ -3,6 +3,8 @@ from typing import Any
 import pandas as pd
 from xgboost import XGBClassifier
 
+from src.models.params import build_xgb_params
+
 
 def train_xgb_model(
     X_train: pd.DataFrame,
@@ -11,16 +13,7 @@ def train_xgb_model(
     y_val: pd.Series,
     config: dict[str, Any],
 ) -> XGBClassifier:
-    model_config = config["model"]
-    model = XGBClassifier(
-        max_depth=model_config["max_depth"],
-        learning_rate=model_config["learning_rate"],
-        n_estimators=model_config["n_estimators"],
-        scale_pos_weight=model_config["scale_pos_weight"],
-        random_state=model_config.get("random_state", 42),
-        n_jobs=model_config.get("n_jobs", -1),
-        eval_metric="logloss",
-    )
+    model = XGBClassifier(**build_xgb_params(config["model"]))
 
     model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
     return model
