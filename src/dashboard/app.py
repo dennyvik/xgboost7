@@ -10,6 +10,7 @@ from flask import Flask, abort, jsonify, render_template, request
 
 from src.pipelines.train_pipeline import run_pipeline
 from src.dashboard.results_repository import DashboardResultsRepository, RunNotFoundError
+from src.features.registry import FEATURE_REGISTRY, get_active_features
 from src.utils.config import load_config
 from src.utils.run_manager import write_config
 
@@ -117,15 +118,27 @@ def create_app(
 
         base_config = config_loader(config_path)
         fields = _build_training_fields(base_config)
+        feature_groups = _build_training_feature_groups(base_config)
 
         if request.method == "GET":
-            return render_template("run_training.html", fields=fields, errors=None)
+            return render_template(
+                "run_training.html",
+                fields=fields,
+                feature_groups=feature_groups,
+                errors=None,
+            )
 
         updated_config, errors, updated_fields = _apply_training_form(
             base_config, request.form
         )
+        updated_feature_groups = _build_training_feature_groups(updated_config)
         if errors:
-            return render_template("run_training.html", fields=updated_fields, errors=errors)
+            return render_template(
+                "run_training.html",
+                fields=updated_fields,
+                feature_groups=updated_feature_groups,
+                errors=errors,
+            )
 
         temp_config_path = None
         try:
@@ -144,6 +157,7 @@ def create_app(
             return render_template(
                 "run_training.html",
                 fields=updated_fields,
+                feature_groups=updated_feature_groups,
                 errors=[str(exc)],
             )
         finally:
@@ -290,6 +304,24 @@ def _build_training_fields(config: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _build_training_feature_groups(config: dict[str, Any]) -> list[dict[str, Any]]:
+    selected_features = set(get_active_features(config))
+    grouped_features: dict[str, list[dict[str, Any]]] = {}
+    for feature_name, metadata in FEATURE_REGISTRY.items():
+        group_name = str(metadata.get("group", "other"))
+        grouped_features.setdefault(group_name, []).append(
+            {
+                "name": feature_name,
+                "selected": feature_name in selected_features,
+            }
+        )
+
+    return [
+        {"group": group_name, "features": features}
+        for group_name, features in sorted(grouped_features.items())
+    ]
+
+
 def _apply_training_form(
     config: dict[str, Any],
     form: Any,
@@ -381,6 +413,17 @@ def _apply_training_form(
         if scale_pos_weight < 1:
             errors.append("model__scale_pos_weight must be >= 1")
         set_nested("model", "scale_pos_weight", scale_pos_weight)
+
+    features_present = bool(read_text("features__present"))
+    if features_present:
+        selected_features = [
+            feature_name
+            for feature_name in form.getlist("features__enabled")
+            if feature_name in FEATURE_REGISTRY
+        ]
+        if not selected_features:
+            errors.append("Select at least one feature")
+        set_nested("features", "enabled", selected_features)
 
     errors.extend(_validate_submitted_training_config(updated))
     errors = list(dict.fromkeys(errors))
