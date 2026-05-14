@@ -84,6 +84,7 @@ class DashboardResultsRepository:
 
         timestamp = self._parse_run_timestamp(run_dir.name)
         summary = self._build_summary(run_dir, metrics, config, feature_importance, timestamp)
+        training_summary = self._build_training_summary(config, metrics, training_log)
         detail = {
             "run_id": run_dir.name,
             "run_dir": str(run_dir),
@@ -99,7 +100,9 @@ class DashboardResultsRepository:
             "precision_chart": self._build_precision_chart(metrics.get("evaluation", {})),
             "quality_chart": self._build_quality_chart(metrics.get("evaluation", {})),
             "event_charts": self._build_event_charts(metrics.get("event_diagnostics", {})),
-            "training_summary": self._build_training_summary(config, metrics, training_log),
+            "training_summary": training_summary,
+            "selected_features": training_summary.get("selected_features")
+            or metrics.get("feature_columns", []),
             "training_chart": self._build_training_chart(metrics.get("evaluation", {}), training_log),
             "training_timeline": self._build_training_timeline(config, metrics, training_log),
             "config_highlights": self._build_config_highlights(config, metrics, training_log),

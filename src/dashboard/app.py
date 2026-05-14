@@ -20,6 +20,7 @@ TRAINING_DATA_ROOT = (PROJECT_ROOT / "data").resolve()
 MAX_TRAINING_N_ESTIMATORS = 5000
 MAX_TRAINING_CV_SPLITS = 10
 MAX_TRAINING_SHAP_SAMPLE_SIZE = 50000
+DEFAULT_FEATURE_GROUP = "other"
 
 
 def create_app(
@@ -308,7 +309,7 @@ def _build_training_feature_groups(config: dict[str, Any]) -> list[dict[str, Any
     selected_features = set(get_active_features(config))
     grouped_features: dict[str, list[dict[str, Any]]] = {}
     for feature_name, metadata in FEATURE_REGISTRY.items():
-        group_name = str(metadata.get("group", "other"))
+        group_name = str(metadata.get("group", DEFAULT_FEATURE_GROUP))
         grouped_features.setdefault(group_name, []).append(
             {
                 "name": feature_name,

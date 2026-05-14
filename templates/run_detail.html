@@ -156,10 +156,9 @@
     <summary>Training config and features</summary>
     <div class="disclosure-body">
       <h3>Selected features</h3>
-      {% set selected_features = detail.training_summary.selected_features or detail.metrics.feature_columns or [] %}
-      {% if selected_features %}
+      {% if detail.selected_features %}
         <ul class="tip-list">
-          {% for feature_name in selected_features %}
+          {% for feature_name in detail.selected_features %}
             <li>{{ feature_name }}</li>
           {% endfor %}
         </ul>
