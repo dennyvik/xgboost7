@@ -16,6 +16,8 @@ def make_run(
     features=None,
     events=None,
     include_feature_importance=True,
+    include_selected_features_event=True,
+    selected_features=None,
 ):
     run_dir = base_dir / run_id
     run_dir.mkdir(parents=True)
@@ -118,26 +120,31 @@ def make_run(
                 {"feature": "close", "importance": 0.2},
             ]
         ).to_csv(run_dir / "feature_importance.csv", index=False)
-    (run_dir / "logs.txt").write_text(
-        "\n".join(
-            [
-                "2026-05-07 01:02:00,000 | INFO | root | data_loaded | rows=210 | date_start=2025-01-01 00:00:00 | date_end=2025-05-01 00:00:00 | missing_values=0 | duplicate_timestamps=0",
-                "2026-05-07 01:02:01,000 | INFO | root | features_built | feature_count=5 | nan_count=12",
-                "2026-05-07 01:02:02,000 | INFO | root | events_built | event_count=1 | event_columns=['event_vol_spike']",
-                "2026-05-07 01:02:03,000 | INFO | root | labels_created | label_distribution={0: 180, 1: 30} | positive_rate=0.142857",
-                "2026-05-07 01:02:04,000 | INFO | root | split_summary | split=train | rows=120 | label_distribution={0: 100, 1: 20} | positive_rate=0.166667",
-                "2026-05-07 01:02:05,000 | INFO | root | split_summary | split=val | rows=50 | label_distribution={0: 40, 1: 10} | positive_rate=0.2",
-                "2026-05-07 01:02:06,000 | INFO | root | split_summary | split=test | rows=60 | label_distribution={0: 42, 1: 18} | positive_rate=0.3",
-                "2026-05-07 01:02:07,000 | INFO | root | training_downsampled | train_rows_before=120 | train_rows_after=100 | positive_before=20 | positive_after=20 | negative_before=100 | negative_after=80",
-                "2026-05-07 01:02:08,000 | INFO | root | features_selected | feature_count=3 | features=['open', 'close', 'event_vol_spike']",
-                "2026-05-07 01:02:09,000 | INFO | root | tuning_complete | total_combinations=4 | total_fit_time=2.3s | best_params={'max_depth': 4, 'n_estimators': 200}",
-                "2026-05-07 01:02:10,000 | INFO | root | model_trained | train_size=100 | val_size=50 | best_iteration=None | validation_score=0.42",
-                "2026-05-07 01:02:11,000 | INFO | root | shap_complete | features_analyzed=3",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
+    selected = (
+        ["open", "close", "event_vol_spike"] if selected_features is None else selected_features
     )
+    log_lines = [
+        "2026-05-07 01:02:00,000 | INFO | root | data_loaded | rows=210 | date_start=2025-01-01 00:00:00 | date_end=2025-05-01 00:00:00 | missing_values=0 | duplicate_timestamps=0",
+        "2026-05-07 01:02:01,000 | INFO | root | features_built | feature_count=5 | nan_count=12",
+        "2026-05-07 01:02:02,000 | INFO | root | events_built | event_count=1 | event_columns=['event_vol_spike']",
+        "2026-05-07 01:02:03,000 | INFO | root | labels_created | label_distribution={0: 180, 1: 30} | positive_rate=0.142857",
+        "2026-05-07 01:02:04,000 | INFO | root | split_summary | split=train | rows=120 | label_distribution={0: 100, 1: 20} | positive_rate=0.166667",
+        "2026-05-07 01:02:05,000 | INFO | root | split_summary | split=val | rows=50 | label_distribution={0: 40, 1: 10} | positive_rate=0.2",
+        "2026-05-07 01:02:06,000 | INFO | root | split_summary | split=test | rows=60 | label_distribution={0: 42, 1: 18} | positive_rate=0.3",
+        "2026-05-07 01:02:07,000 | INFO | root | training_downsampled | train_rows_before=120 | train_rows_after=100 | positive_before=20 | positive_after=20 | negative_before=100 | negative_after=80",
+    ]
+    if include_selected_features_event:
+        log_lines.append(
+            f"2026-05-07 01:02:08,000 | INFO | root | features_selected | feature_count={len(selected)} | features={selected}"
+        )
+    log_lines.extend(
+        [
+            "2026-05-07 01:02:09,000 | INFO | root | tuning_complete | total_combinations=4 | total_fit_time=2.3s | best_params={'max_depth': 4, 'n_estimators': 200}",
+            "2026-05-07 01:02:10,000 | INFO | root | model_trained | train_size=100 | val_size=50 | best_iteration=None | validation_score=0.42",
+            "2026-05-07 01:02:11,000 | INFO | root | shap_complete | features_analyzed=3",
+        ]
+    )
+    (run_dir / "logs.txt").write_text("\n".join(log_lines) + "\n", encoding="utf-8")
     return run_dir
 
 
@@ -174,6 +181,36 @@ def test_get_run_detail_builds_chart_payloads(tmp_path):
     assert detail["training_chart"]["labels"] == ["Raw train", "Sampled train", "Validation", "Test"]
     assert detail["training_timeline"][0]["title"] == "Loaded data"
     assert detail["logs_preview"][0].startswith("2026-05-07 01:02:00,000")
+
+
+def test_get_run_detail_preserves_explicit_empty_selected_features(tmp_path):
+    runs_dir = tmp_path / "runs"
+    make_run(
+        runs_dir,
+        "xgb7_m1_2026-05-07_0102",
+        selected_features=[],
+    )
+
+    repository = DashboardResultsRepository(runs_dir)
+    detail = repository.get_run_detail("xgb7_m1_2026-05-07_0102")
+
+    assert detail["training_summary"]["selected_features"] == []
+    assert detail["selected_features"] == []
+
+
+def test_get_run_detail_falls_back_to_feature_columns_when_selection_not_captured(tmp_path):
+    runs_dir = tmp_path / "runs"
+    make_run(
+        runs_dir,
+        "xgb7_m1_2026-05-07_0102",
+        include_selected_features_event=False,
+    )
+
+    repository = DashboardResultsRepository(runs_dir)
+    detail = repository.get_run_detail("xgb7_m1_2026-05-07_0102")
+
+    assert detail["training_summary"]["selected_features"] is None
+    assert detail["selected_features"] == ["open", "close", "event_vol_spike"]
 
 
 def test_get_compare_payload_aligns_different_features_and_events(tmp_path):

@@ -85,6 +85,10 @@ class DashboardResultsRepository:
         timestamp = self._parse_run_timestamp(run_dir.name)
         summary = self._build_summary(run_dir, metrics, config, feature_importance, timestamp)
         training_summary = self._build_training_summary(config, metrics, training_log)
+        selected_features = training_summary.get("selected_features")
+        if selected_features is None:
+            selected_features = metrics.get("feature_columns", [])
+
         detail = {
             "run_id": run_dir.name,
             "run_dir": str(run_dir),
@@ -101,8 +105,7 @@ class DashboardResultsRepository:
             "quality_chart": self._build_quality_chart(metrics.get("evaluation", {})),
             "event_charts": self._build_event_charts(metrics.get("event_diagnostics", {})),
             "training_summary": training_summary,
-            "selected_features": training_summary.get("selected_features")
-            or metrics.get("feature_columns", []),
+            "selected_features": selected_features,
             "training_chart": self._build_training_chart(metrics.get("evaluation", {}), training_log),
             "training_timeline": self._build_training_timeline(config, metrics, training_log),
             "config_highlights": self._build_config_highlights(config, metrics, training_log),
@@ -326,7 +329,7 @@ class DashboardResultsRepository:
         features_built = events.get("features_built", {})
         events_built = events.get("events_built", {})
         labels_created = events.get("labels_created", {})
-        selected_features = events.get("features_selected", {})
+        selected_features = events.get("features_selected")
 
         return {
             "dataset_rows": events.get("data_loaded", {}).get("rows"),
@@ -364,7 +367,9 @@ class DashboardResultsRepository:
             ),
             "shap_enabled": bool(config.get("shap", {}).get("enabled")),
             "shap_features_analyzed": shap_log.get("features_analyzed"),
-            "selected_features": selected_features.get("features", []),
+            "selected_features": selected_features.get("features", [])
+            if isinstance(selected_features, dict)
+            else None,
         }
 
     def _build_training_chart(
