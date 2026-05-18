@@ -6,7 +6,7 @@ from src.dataset.builder import time_split
 from src.dataset.sampler import downsample_training_data
 from src.evaluation.metrics import add_opportunity_rank, calculate_precision_at_k
 from src.events.builder import build_event_signals
-from src.features.builder import build_features
+from src.features.builder import FEATURE_COLUMNS, build_features, compute_ema_cross_signal
 from src.labeling.opportunity import create_opportunity_label
 from src.pipelines.train_pipeline import select_model_features
 
@@ -57,11 +57,22 @@ def test_build_features_and_events_create_expected_columns():
     df_feat = build_features(make_ohlc_data())
     df_event = build_event_signals(df_feat)
 
-    for column in ["atr_14", "atr_28", "ret_3", "ret_6", "range_ratio"]:
+    for column in FEATURE_COLUMNS:
         assert column in df_feat.columns
     assert "event_vol_spike" in df_event.columns
     assert "event_impulse" in df_event.columns
     assert all(column.startswith("event_") for column in ["event_vol_spike", "event_impulse"])
+
+
+def test_compute_ema_cross_signal_uses_prior_five_rows_and_excludes_current_row():
+    ema_fast = pd.Series([-1.0, -1.0, -1.0, 0.0, 1.0, 2.0, 2.0, -1.0, -2.0, -2.0])
+    ema_slow = pd.Series([0.0] * len(ema_fast))
+
+    result = compute_ema_cross_signal(ema_fast, ema_slow, lookback=5)
+
+    assert result.tolist() == [0, 0, 0, 0, 0, 1, 1, 1, -1, -1]
+    assert (result == 1).astype(int).tolist() == [0, 0, 0, 0, 0, 1, 1, 1, 0, 0]
+    assert (result == -1).astype(int).tolist() == [0, 0, 0, 0, 0, 0, 0, 0, 1, 1]
 
 
 def test_create_opportunity_label_marks_future_moves_and_tail_nan():

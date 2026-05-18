@@ -21,16 +21,18 @@ sampling:
   random_state: 42
 
 label:
-  horizon_bars: 10
+  horizon_bars: 20
   threshold: 0.0015
 
 model:
-  max_depth: 5
+  max_depth: 4
   learning_rate: 0.05
   n_estimators: 200
   scale_pos_weight: 8
   random_state: 42
   n_jobs: -1
+  tree_method: hist
+  device: cpu
 
 evaluation:
   top_k: [0.5, 1, 2]
@@ -38,12 +40,14 @@ evaluation:
 # Feature selection — omit or leave empty to use all registry features.
 # Supported keys:
 #   enabled: explicit list of feature names
-#   groups:  list of groups  (momentum | volatility | structure | event)
-features: {}
+#   groups:  list of groups  (momentum | volatility | structure | trend | event)
+features: {
+
+}
 
 # GridSearchCV tuning — disabled by default.
 tuning:
-  enabled: false
+  enabled: true
   method: grid
   param_grid:
     max_depth: [4, 6]
@@ -53,7 +57,7 @@ tuning:
 
 # SHAP analysis — disabled by default.
 shap:
-  enabled: false
+  enabled: true
   sample_size: 10000
 
 debug:

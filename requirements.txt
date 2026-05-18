@@ -1,4 +1,5 @@
 pandas
+pandas-ta-classic
 numpy
 scikit-learn
 xgboost

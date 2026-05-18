@@ -9,6 +9,8 @@ import pandas as pd
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from xgboost import XGBClassifier
 
+from src.models.params import build_xgb_params
+
 
 MAX_COMBINATIONS = 200
 
@@ -48,18 +50,7 @@ def run_grid_search(
             "MAX_COMBINATIONS."
         )
 
-    model_config = config.get("model", {})
-    base_params: dict[str, Any] = {
-        "max_depth": model_config.get("max_depth", 5),
-        "learning_rate": model_config.get("learning_rate", 0.05),
-        "n_estimators": model_config.get("n_estimators", 200),
-        "scale_pos_weight": model_config.get("scale_pos_weight", 8),
-        "random_state": model_config.get("random_state", 42),
-        "n_jobs": model_config.get("n_jobs", -1),
-        "eval_metric": "logloss",
-    }
-
-    model = XGBClassifier(**base_params)
+    model = XGBClassifier(**build_xgb_params(config.get("model", {})))
     cv = TimeSeriesSplit(n_splits=cv_splits)
 
     gs = GridSearchCV(

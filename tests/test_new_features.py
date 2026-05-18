@@ -11,6 +11,7 @@ from xgboost import XGBClassifier
 
 from src.evaluation.shap_analysis import run_shap_analysis
 from src.features.registry import FEATURE_REGISTRY, get_active_features
+from src.models.params import build_xgb_params
 from src.models.tuner import MAX_COMBINATIONS, run_grid_search
 from src.pipelines.train_pipeline import run_pipeline, select_model_features
 from src.utils.run_manager import save_config_to_run
@@ -192,6 +193,21 @@ class TestRunGridSearch:
         config = self._minimal_config(param_grid=big_grid)
         with pytest.raises(ValueError, match="Grid too large"):
             run_grid_search(X, y, config, tmp_path)
+
+
+class TestCpuFirstModelParams:
+    def test_build_xgb_params_defaults_to_cpu_hist(self):
+        params = build_xgb_params(
+            {
+                "max_depth": 3,
+                "learning_rate": 0.1,
+                "n_estimators": 10,
+                "scale_pos_weight": 1,
+            }
+        )
+
+        assert params["tree_method"] == "hist"
+        assert params["device"] == "cpu"
 
 
 # ---------------------------------------------------------------------------
