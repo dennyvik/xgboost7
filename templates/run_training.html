@@ -37,8 +37,29 @@
           >
         </label>
       {% endfor %}
+
+      <div>
+        <h3>Features</h3>
+        <p class="muted">Choose the input features to use for this run.</p>
+        <input type="hidden" name="features__present" value="1">
+        {% for feature_group in feature_groups %}
+          <fieldset>
+            <legend>{{ feature_group.group }}</legend>
+            {% for feature in feature_group.features %}
+              <label>
+                <input
+                  type="checkbox"
+                  name="features__enabled"
+                  value="{{ feature.name }}"
+                  {% if feature.selected %}checked{% endif %}
+                >
+                {{ feature.name }}
+              </label>
+            {% endfor %}
+          </fieldset>
+        {% endfor %}
+      </div>
       <button type="submit">Run training</button>
     </form>
   </section>
 {% endblock %}
-

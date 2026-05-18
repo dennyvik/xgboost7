@@ -153,6 +153,25 @@
   </section>
 
   <details class="panel disclosure-panel">
+    <summary>Training config and features</summary>
+    <div class="disclosure-body">
+      <h3>Selected features</h3>
+      {% if detail.selected_features %}
+        <ul class="tip-list">
+          {% for feature_name in detail.selected_features %}
+            <li>{{ feature_name }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No selected feature list was captured for this run.</p>
+      {% endif %}
+
+      <h3>Run config</h3>
+      <pre class="log-preview">{{ detail.config | tojson(indent=2) }}</pre>
+    </div>
+  </details>
+
+  <details class="panel disclosure-panel">
     <summary>Raw log preview</summary>
     <div class="disclosure-body">
       <p class="muted">Keep this for debugging. The sections above are meant to be the faster, user-friendly read.</p>
